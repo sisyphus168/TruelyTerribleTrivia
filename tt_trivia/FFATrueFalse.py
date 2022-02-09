@@ -1,0 +1,3 @@
+
+class FFATrueFalse:
+    pass
