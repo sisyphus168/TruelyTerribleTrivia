@@ -1,5 +1,7 @@
 import json
-import aiohttp
+# import aiohttp
+import requests
+import base64
 import asyncio
 from dataclasses import dataclass
 import enum
@@ -23,8 +25,8 @@ class ApiError(RuntimeError):
 
 
 class QuestionSet:
-    def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, category: str = "General Knowledge",
-                         difficulty: str = "any", num: int = 10):
+    def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, category: str = "General Knowledge", difficulty: str = "any",
+                 num: int = 10):
         with open("../resource/categories.json", "r") as f:
             self._categories = json.load(f)
         assert 0 < num < 51
@@ -37,10 +39,12 @@ class QuestionSet:
         self._category = category
         self._difficulty = difficulty.lower()
         self._num = num
+        self._initialized = False
 
-    async def initialize(self, session):
+    async def initialize(self):
         self._index = 0
         request_url = API_BASE_URL + f"amount={self._num}"
+        request_url += "&encode=base64"
         if self._category != "":
             cat_id = self._categories[self._category]
             request_url += f"&category={cat_id}"
@@ -51,77 +55,120 @@ class QuestionSet:
         elif self._q_type == Qtype.TRUE_FALSE:
             request_url += "&type=boolean"
         print(f"Request URL: {request_url}")
-        await self._fetch_questions(request_url, session)
+        await self._fetch_questions(request_url)
+        self._initialized = True
 
-    async def _fetch_questions(self, url, session):
-        # TODO: Despite await it seems like response's content is never ready. Connection closing early?
-        async with session.get(url) as response:
-            print("version:", response.version)
-            print("status:", response.status)
-            print("content type:", response.content_type)
-            if response.status != 200:
-                raise RuntimeError(f"Fuggg, the response code was {response.status}")
-            print(response.content)
-            q_data = await response.json()
-            await asyncio.sleep(0.01)
-            # q_data = json.loads(payload_json)
-            if q_data["response code"] == 2:
-                raise ApiError(f"Bad questions get request url: {url}")
-            elif q_data["response code"] != 0:
+    async def _fetch_questions(self, url):
+        # TODO: replace requests with aiohttp asyc http request
+        with requests.request("GET", url) as response:
+            print("status:", response.status_code)
+            print("content type:", response.encoding)
+            if response.status_code != 200:
+                raise RuntimeError(f"The response code was {response.status_code}")
+            q_data = response.json()
+            if q_data["response_code"] == 2:
+                raise ApiError(f"Bad opentdb api url: {url}")
+            elif q_data["response_code"] != 0:
                 print("API Request failed")
                 raise RuntimeError(f"Get request for questions failed. {q_data['response code']=}")
             question_lst = q_data["results"]
             self._questions = [self._construct_question(q_dict) for q_dict in question_lst]
 
     def _construct_question(self, question_dict):
-        diff = question_dict["difficulty"]
-        question = question_dict["question"]
-        cat = question_dict["category"]
-        answer = question_dict["correct_answer"]
+        # Question, answers, etc are base64 encoded, so decode them
+        def decode(s): return str(base64.urlsafe_b64decode(s), "utf-8")
+        diff = decode(question_dict["difficulty"])
+        question = decode(question_dict["question"])
+        cat = decode(question_dict["category"])
+        answer = decode(question_dict["correct_answer"])
         if self._q_type == Qtype.TRUE_FALSE:
-            return TFQuestion(cat=cat, diff=diff, question=question, answer=answer)
+            return TFQuestion(cat=cat, diff=diff, question=question, answer=bool(answer))
         elif self._q_type == Qtype.MULTI_CHOICE:
-            choices = [ans for ans in question_dict["incorrect_answers"]]
-            choices = [answer].extend(choices)
+            choices = [decode(ans) for ans in question_dict["incorrect_answers"]]
+            choices.append(answer)  # answer already decoded
             random.shuffle(choices)
             return MCQuestion(cat=cat, diff=diff, question=question, answer=answer, choices=choices)
         else:
             return FreeQuestion(cat=cat, diff=diff, question=question, answer=answer)
 
+    def __repr__(self):
+        rep = f"Category:\t{self._category}"
+        rep += f"\nQuestion type:\t{self._q_type}"
+        rep += f"\nDifficulty:\t{self._difficulty}"
+        rep += f"\nNo. Questions:\t{self._num}"
+        rep += f"\nInitialized:\t{self._initialized}"
+        rep += f"Questions:\n\n"
+        for question in self._questions:
+            rep += f"\t- {question}\n"
+        return rep
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __iter__(self):
+        if not self._initialized:
+            raise RuntimeError(f"Call to __iter__ on QuestionSet {self} before it was initialized")
+        self._index = 0
+        return self
+
+    def __next__(self):
+        if not self._initialized:
+            raise RuntimeError(f"Call to __next__ on QuestionSet {self} before it was initialized.")
+        if self._index < self._num:
+            next_q = self._questions[self._index]
+            self._index += 1
+            return next_q
+        else:
+            raise StopIteration
+
+
 @dataclass
 class MCQuestion:
-    q_type: Qtype.MULTI_CHOICE
     cat: str
     diff: str
     question: str
     answer: str
     choices: list[str]
+    index_of: callable = lambda char: "abcd".index(char)
+
+    @staticmethod
+    def get_q_type():
+        return Qtype.MULTI_CHOICE
 
 
 @dataclass
 class TFQuestion:
-    q_type: Qtype.TRUE_FALSE
     cat: str
     diff: str
     question: str
     answer: bool
 
+    @staticmethod
+    def get_q_type():
+        return Qtype.TRUE_FALSE
+
 
 # For use in eventual free response mode
 @dataclass
 class FreeQuestion:
-    q_type: Qtype.FREE_RESPONSE
     cat: str
     diff: str
     question: str
     answer: str
 
+    @staticmethod
+    def get_q_type():
+        return Qtype.FREE_RESPONSE
+
 
 async def main():
     questions = QuestionSet()
-    async with aiohttp.ClientSession() as session:
-        await questions.initialize(session)
-
+    # async with aiohttp.ClientSession() as session:
+    await questions.initialize()
+    print("question set:", questions, sep="\n\n")
+    print("\nIterating over the question set:")
+    for question in questions:
+        print("\t", question)
 
 
 if __name__ == "__main__":
@@ -130,6 +177,6 @@ if __name__ == "__main__":
         asyncio.set_event_loop(loop)
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        loop.close()
+        loop.stop()
     finally:
         loop.close()
