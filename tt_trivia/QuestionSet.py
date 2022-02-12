@@ -91,6 +91,9 @@ class QuestionSet:
         else:
             return FreeQuestion(cat=cat, diff=diff, question=question, answer=answer)
 
+    def is_initialized(self):
+        return self._initialized
+
     def __repr__(self):
         rep = f"Category:\t{self._category}"
         rep += f"\nQuestion type:\t{self._q_type}"
