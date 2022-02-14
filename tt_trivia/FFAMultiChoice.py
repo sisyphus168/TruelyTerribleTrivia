@@ -1,5 +1,6 @@
 import enum
 from QuestionSet import QuestionSet, Qtype
+from TriviaBot import TriviaBot
 import discord
 import os
 
@@ -18,22 +19,21 @@ class GameStatus(enum.Enum):
 
 class FFAMultiChoice:
     _status: GameStatus
-    _sound_path: str
-    _sounds_available: set[str]
     _players: set[str]
-    _scores: map[str: int]
+    _scores: dict[str: int]
     _player_count: int
     _skip_votes: int
     _questions: QuestionSet
+    _guild_id: int
+    _trivia_bot: TriviaBot
 
-
-    def __init__(self, sound_path: str, q_set: QuestionSet):
+    def __init__(self, q_set: QuestionSet, g_id: int, bot: TriviaBot):
         self._status = GameStatus.STARTING
-        self._sound_path = sound_path
-        self._sounds_available = {wavfile for wavfile in os.listdir(self._sound_path) if wavfile.endswith(".wav")}
         self._players = set()
         self._player_count = 0
         self._questions = q_set
+        self._guild_id = g_id
+        self._trivia_bot = bot
         if not q_set.is_initialized():
             self._questions.initialize()
         pass

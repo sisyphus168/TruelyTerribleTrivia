@@ -25,8 +25,13 @@ class ApiError(RuntimeError):
 
 
 class QuestionSet:
-    def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, category: str = "General Knowledge", difficulty: str = "any",
-                 num: int = 10):
+    # def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, category: str = "General Knowledge", difficulty: str = "any",
+    #              num: int = 10):
+    def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, **kwargs):
+        # keyword args set to default if need be
+        category = kwargs["category"] if "category" in kwargs else "General Knowledge"
+        difficulty = kwargs["difficulty"] if "difficulty" in kwargs else "any"
+        num = kwargs["num"] if "num" in kwargs else 20
         with open("../resource/categories.json", "r") as f:
             self._categories = json.load(f)
         assert 0 < num < 51
@@ -87,9 +92,13 @@ class QuestionSet:
             choices = [decode(ans) for ans in question_dict["incorrect_answers"]]
             choices.append(answer)  # answer already decoded
             random.shuffle(choices)
-            return MCQuestion(cat=cat, diff=diff, question=question, answer=answer, choices=choices)
-        else:
+            ans_idx = choices.index(answer)
+            return MCQuestion(cat=cat, diff=diff, question=question, answer=answer,
+                              choices=choices, answer_index=ans_idx)
+        elif self._q_type == Qtype.FREE_RESPONSE:
             return FreeQuestion(cat=cat, diff=diff, question=question, answer=answer)
+        else:
+            raise ValueError(f"Unknown question type {self._q_type}")
 
     def is_initialized(self):
         return self._initialized
@@ -132,11 +141,15 @@ class MCQuestion:
     question: str
     answer: str
     choices: list[str]
-    index_of: callable = lambda char: "abcd".index(char)
+    answer_index: int
 
     @staticmethod
     def get_q_type():
         return Qtype.MULTI_CHOICE
+
+    @staticmethod
+    def get_index(char):
+        return "abcd".index(char)
 
 
 @dataclass
@@ -150,6 +163,10 @@ class TFQuestion:
     def get_q_type():
         return Qtype.TRUE_FALSE
 
+    @staticmethod
+    def get_index(char):
+        return "abcd".index(char)
+
 
 # For use in eventual free response mode
 @dataclass
@@ -162,6 +179,10 @@ class FreeQuestion:
     @staticmethod
     def get_q_type():
         return Qtype.FREE_RESPONSE
+
+    @staticmethod
+    def get_index(char):
+        return "abcd".index(char)
 
 
 async def main():
