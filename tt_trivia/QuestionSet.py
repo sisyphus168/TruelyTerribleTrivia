@@ -46,6 +46,24 @@ class QuestionSet:
         self._num = num
         self._initialized = False
 
+    def get_q_type(self):
+        return self._q_type
+
+    def get_category(self):
+        return self._category
+
+    def get_num_questions(self):
+        return self._num
+
+    def get_difficulty(self):
+        return self._difficulty
+
+    def get_index(self):
+        return self._index
+
+    def get_question_no(self):
+        return self._index + 1
+
     async def initialize(self):
         self._index = 0
         request_url = API_BASE_URL + f"amount={self._num}"
