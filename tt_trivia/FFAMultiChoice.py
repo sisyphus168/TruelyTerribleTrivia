@@ -1,11 +1,10 @@
 import enum
 import time
 import random
-from QuestionSet import QuestionSet, Qtype, MCQuestion
+from QuestionSet import QuestionSet, MCQuestion
 import discord
 from Player import PLayer
 import asyncio
-import os
 
 SKIP_THRESHOLD = 2/3
 # # of seconds to wait
@@ -94,10 +93,13 @@ class FFAMultiChoice:
                 await self._set_status(GameStatus.ENDING)
                 return
             start_msg = f"\nFree for all difficulty: {self._questions.get_difficulty()} category: {self._questions.get_category()}.\n"
-            start_msg += f"If you wish to skip a question answer with \"skip!\". {SKIP_THRESHOLD:.0%} of players must vote to skip.\n"
+            start_msg += f"If you wish to skip a question answer \"skip!\". "
+            start_msg += f"To skip {SKIP_THRESHOLD:.0%} of players or more must vote to skip."
+            start_msg += f" Otherwise a skip vote counts as an incorrect answer.\n"
             start_msg += "Game starting momentarily.\nPlayers:"
             for player in self._players.values():
                 start_msg += f"\n\t- {player.name}"
+            start_msg += "\n\n"
             await self._trivia_bot.say(self.get_guild_id(), start_msg, "prepare.wav")
             random.seed(time.time())
             await asyncio.sleep(random.randint(3, 8))
@@ -107,7 +109,12 @@ class FFAMultiChoice:
 
     async def _ask_next_question(self):
         print("Asking Question")
-        question: MCQuestion = next(self._questions)
+        question: MCQuestion = next(self._questions, None)
+        # If none, then we're outta questions end the game
+        if question is None:
+            print("All outta questions")
+            await self._set_status(GameStatus.ENDING)
+            return
         self._current_question = question
         q_str = f"Question No {self._questions.get_index()}:\n"
         q_str += f"{question.question}\n"
@@ -128,9 +135,40 @@ class FFAMultiChoice:
         for player in self._players.values():
             player.answer = ""
 
-    async def end_question(self):
-        # TODO: Implement
-        pass
+    async def _end_question(self):
+        if self._skip_question():
+            self._trivia_bot.say(self._guild_id, "Question skipped!")
+            self._skipped_questions += 1
+        # Loop over players, update their scores, streak, and perfect status
+        else:
+            for player in self._players.values():
+                if player.answer == "skip!":
+                    continue
+                if player.answer != "skip!" and self._check_answer(player.answer):
+                    player.score += 1
+                    player.streak += 1
+                else:
+                    player.perfect = False
+                    player.streak = 0
+                print(f"{player=}")
+        # TODO: Method to report scores, say stuff for streaks etc.
+        await self._set_status(GameStatus.ASKING)
+
+    def _check_answer(self, answer) -> bool:
+        assert self._status == GameStatus.QUESTION_RESULTS
+        # Players can answer with either a-d, or typing the full answer
+        answer = answer.lower()
+        if answer in {"a", "b", "c", "d"}:
+            return self._current_question.answer_index == MCQuestion.get_index(answer)
+        if self._current_question.answer.lower() == answer:
+            return True
+        return False
+
+    def _skip_question(self) -> bool:
+        assert self._status == GameStatus.QUESTION_RESULTS
+        votes = len([p for p in self._players.values() if p.answer.lower() == "skip!"])
+        threshold = round(SKIP_THRESHOLD * len(self._players))
+        return votes >= threshold
 
     async def end_game(self):
         # TODO: Implement
@@ -149,9 +187,7 @@ class FFAMultiChoice:
         elif self._status == GameStatus.WAIT_ANSWERS:
             await self._wait_answers()
         elif self._status == GameStatus.QUESTION_RESULTS:
-            for player in self._players.values():
-                print(f"Player {player.name} answered: {player.answer}")
-            print("I'd have looked at the answers, said some funny shit, streaks, then reset questions and all that")
+            await self._end_question()
         elif self._status == GameStatus.ENDING:
             if self._player_count > 0:
                 print(f"I'd have computed the winner and played silly sounds, etc.")

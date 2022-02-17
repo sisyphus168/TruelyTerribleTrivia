@@ -11,10 +11,11 @@ class PLayer:
     answer: str | None = None
 
     def __repr__(self):
-        r = f"Player: {self.id}: {self.name}"
+        r = f"Player: id= {self.id}: name= {self.name}"
         r += f"\n\t- score: {self.score}"
         r += f"\n\t- streak: {self.streak}"
         r += f"\n\t- perfect: {self.perfect}"
+        r += f"\n\t- answer: {self.answer}"
         return r
 
     def __str__(self):
