@@ -7,6 +7,7 @@ import re
 import json
 from QuestionSet import QuestionSet, Qtype
 from FFAMultiChoice import FFAMultiChoice, GameStatus
+from dataclasses import field
 
 # TODO: Write help message and commands list
 HELP_MESSAGE = """
@@ -36,18 +37,20 @@ GAMEMODE_CLASSES = {
 
 class TriviaBot(discord.Client):
     _sound_path: str
-    _sounds_available: set[str] = set()
-    _games: dict[int, FFAMultiChoice] = {}
-    _voice_clients: dict[int, discord.VoiceClient] = {}
-    _game_code_to_q_type: dict[str, Qtype] = {"mc": Qtype.MULTI_CHOICE,
-                                              "tf": Qtype.TRUE_FALSE,
-                                              "free": Qtype.FREE_RESPONSE}
+    _sounds_available: set[str]
+    _games: dict[int, FFAMultiChoice]
+    _voice_clients: dict[int, discord.VoiceClient]
+    _game_code_to_q_type: dict[str, Qtype]
 
     def __init__(self, sound_path):
         super(TriviaBot, self).__init__()
+        self._game_code_to_q_type = {"mc": Qtype.MULTI_CHOICE,
+                                     "tf": Qtype.TRUE_FALSE,
+                                     "free": Qtype.FREE_RESPONSE}
         self._sound_path = sound_path
         self._sounds_available = {wavfile for wavfile in os.listdir(self._sound_path) if wavfile.endswith(".wav")}
         self._games = {}
+        self._voice_clients = {}
         self._categories = {}
         with open(f"{os.getenv('CATEGORIES')}", "r") as f:
             self._categories = set(json.load(f).keys())
@@ -73,37 +76,38 @@ class TriviaBot(discord.Client):
             return
         # Does message start with ttt?
         msg = str(message.content).lower()
-        if not msg.startswith("ttt "):
-            return
-        msg = msg.removeprefix("ttt ")
-        channel: discord.TextChannel = message.channel
-        if msg == "help":
-            await channel.send(HELP_MESSAGE)
-        elif msg == "commands" or msg == "command list":
-            await channel.send(COMMANDS_LIST)
-        elif msg == "categories":
-            cat_string = "Categories:\n\t- " + "\n\t- ".join(self._categories)
-            await channel.send(cat_string)
-        elif msg.startswith("start "):
-            # only start a game if one is not already begun for this guild
-            if message.guild.id not in self._games:
-                if await self._setup_game(msg, message.guild.id):
-                    await message.reply("Success! Starting your game...")
-                    await self._games[message.guild.id].start()
+        if msg.startswith("ttt "):
+            msg = msg.removeprefix("ttt ").strip()
+            channel: discord.TextChannel = message.channel
+            if msg == "help":
+                await channel.send(HELP_MESSAGE)
+            elif msg == "commands" or msg == "command list":
+                await channel.send(COMMANDS_LIST)
+            elif msg == "categories":
+                cat_string = "Categories:\n\t- " + "\n\t- ".join(self._categories)
+                await channel.send(cat_string)
+            elif msg.startswith("start "):
+                # only start a game if one is not already begun for this guild
+                if message.guild.id not in self._games:
+                    if await self._setup_game(msg, message.guild.id):
+                        await message.reply("Success! Starting your game...")
+                        await self._games[message.guild.id].start()
+                    else:
+                        await message.reply("Ooops, invalid start command. Type \"ttt help\" or \"ttt commands\" for help.")
                 else:
-                    await message.reply("Ooops, invalid start command. Type \"ttt help\" or \"ttt commands\" for help.")
-            else:
-                await message.reply(f"Cannot start a new game while one is currently running on this server.")
+                    await message.reply(f"Cannot start a new game while one is currently running on this server.")
         elif self.has_game(message.guild.id):
             await self._pass_message_to_game(message, message.guild.id)
 
     async def _pass_message_to_game(self, message: discord.Message, g_id: int):
         game: FFAMultiChoice = self._games[g_id]
         if game.get_state() == GameStatus.GETTING_PLAYERS:
-            if message.content.startswith("ttt play"):
+            if message.content.startswith("play"):
                 print(type(message.author))
                 if game.add_player(message.author):
                     await self.say(g_id, f"{message.author.name} added to players!")
+        elif game.get_state() == GameStatus.WAIT_ANSWERS:
+            game.receive_answer(message)
         # TODO: Handle other game states
 
     async def on_ready(self):
@@ -173,7 +177,7 @@ class TriviaBot(discord.Client):
                 kwargs["category"] = msg[match.start()+4: match.end()]
             if match := gamemode_pattern.search(msg):
                 game_mode = msg[match.start(): match.end()].strip()
-                return (game_mode, QuestionSet(q_type, **kwargs))
+                return game_mode, QuestionSet(q_type, **kwargs)
             else:
                 print("I botched the RegEx")
                 return None
@@ -182,9 +186,10 @@ class TriviaBot(discord.Client):
             print(e)
             return None
 
-    async def cleanup_game(self, game: FFAMultiChoice):
+    def cleanup_game(self, game: FFAMultiChoice):
         g_id = game.get_guild_id()
         if self.has_game(g_id):
+            print(f"Deleting game for guild: {g_id}")
             del self._games[g_id]
 
     def has_game(self, g_id: int):

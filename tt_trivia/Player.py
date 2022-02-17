@@ -5,9 +5,10 @@ import dataclasses
 class PLayer:
     name: str
     id: int
-    score: int
-    streak: int
-    perfect: bool
+    score: int = 0
+    streak: int = 0
+    perfect: bool = True
+    answer: str | None = None
 
     def __repr__(self):
         r = f"Player: {self.id}: {self.name}"
@@ -18,3 +19,20 @@ class PLayer:
 
     def __str__(self):
         return self.__repr__()
+
+    @property
+    def get_name(self):
+        return self.name
+
+    @property
+    def get_score(self):
+        return self.score
+
+    def get_streak(self):
+        return self.streak
+
+    def is_perfect(self):
+        return self.perfect
+
+    def get_answer(self):
+        return self.answer
