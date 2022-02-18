@@ -68,6 +68,7 @@ class FFAMultiChoice:
 
     async def start(self):
         try:
+            random.seed(time.time())
             if not self._questions.is_initialized():
                 await self._questions.initialize()
             await self._set_status(GameStatus.GETTING_PLAYERS)
@@ -101,8 +102,7 @@ class FFAMultiChoice:
                 start_msg += f"\n\t- {player.name}"
             start_msg += "\n\n"
             await self._trivia_bot.say(self.get_guild_id(), start_msg, "prepare.wav")
-            random.seed(time.time())
-            await asyncio.sleep(random.randint(3, 8))
+            await asyncio.sleep(5)
             await self._set_status(GameStatus.ASKING)
         except Exception as e:
             print("Exception:", e)
@@ -117,11 +117,12 @@ class FFAMultiChoice:
             return
         self._current_question = question
         q_str = f"Question No {self._questions.get_index()}:\n"
-        q_str += f"{question.question}\n"
-        correct_ans = "abcd"[question.answer_index]
+        q_str += f"{question.question}"
         for char, answer in zip("abcd", question.choices):
             q_str += f"\n\t{char}. {answer}"
         await self._trivia_bot.speak(self._guild_id, [(q_str, None), (f"\n{ANSWER_TIME} seconds to answer.", None)])
+        # TODO: Remove this, debugging/testing purposes only... unless...
+        print("answer:", self._current_question.answer)
         await self._set_status(GameStatus.WAIT_ANSWERS)
 
     async def _wait_answers(self):
@@ -137,22 +138,48 @@ class FFAMultiChoice:
 
     async def _end_question(self):
         if self._skip_question():
-            self._trivia_bot.say(self._guild_id, "Question skipped!")
             self._skipped_questions += 1
+            await self._trivia_bot.say(self._guild_id, "Question skipped!")
         # Loop over players, update their scores, streak, and perfect status
         else:
+            correct = []
+            answer = f"{'abcd'[self._current_question.answer_index]}. {self._current_question.answer}"
+            correct_msg = f"Correct Answer: {answer}\nCorrect Players:"
+            scores_msg = "Scores:"
             for player in self._players.values():
-                if player.answer == "skip!":
-                    continue
                 if player.answer != "skip!" and self._check_answer(player.answer):
                     player.score += 1
                     player.streak += 1
+                    correct.append(player)
+                    correct_msg += f"\n\t- {player.name}"
                 else:
                     player.perfect = False
                     player.streak = 0
+                scores_msg += f"\n\t{player.name}: {player.score}"
                 print(f"{player=}")
-        # TODO: Method to report scores, say stuff for streaks etc.
+            question_sum_msg = correct_msg + "\n" + scores_msg + "\n"
+            await self._trivia_bot.say(self._guild_id, question_sum_msg, None)
+            await self._question_report(correct)
+        # Game flow should allow a brief pause here
+        await asyncio.sleep(5)
         await self._set_status(GameStatus.ASKING)
+
+    async def _question_report(self, correct_players: list[PLayer]):
+        # Method to report the scores after the question, and announce streak callouts
+        callouts = set()
+        announcements = []
+        for player in correct_players:
+            streak = player.streak
+            if streak > 2:
+                steak_msg = f"{player.name} is on a {streak}-streak!"
+                streak_wav = f"{streak}streak.wav"
+                # Let's not spam the voice channel, check if the announcement is already going to play
+                if streak_wav not in callouts:
+                    callouts.add(streak_wav)
+                    announcements.append((steak_msg, streak_wav))
+                else:
+                    announcements.append((steak_msg, None))
+        await self._trivia_bot.speak(self._guild_id, announcements)
 
     def _check_answer(self, answer) -> bool:
         assert self._status == GameStatus.QUESTION_RESULTS
@@ -170,9 +197,29 @@ class FFAMultiChoice:
         threshold = round(SKIP_THRESHOLD * len(self._players))
         return votes >= threshold
 
-    async def end_game(self):
-        # TODO: Implement
-        pass
+    async def _end_game(self):
+        print("ending game")
+        try:
+            players: list[PLayer] = list(self._players.values())
+            print("about to sort")
+            players.sort(reverse=True, key=lambda p: p.score)
+            print("sorted")
+            winner = players[0]
+            print("looping through to make final score report")
+            game_report = "Final scores:\n"
+            for i, player in enumerate(players):
+                print(f"{i=}\t{player=}")
+                game_report += f"{i + 1}. {player}: {player.score}\n"
+            print("About to wait for the victory announcement to play")
+            await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> is the winner with {winner.score} points!",
+                                       "victory.wav")
+            # Quite an achievement
+            print("checking if player is perfect")
+            if winner.is_perfect():
+                await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
+        except Exception as e:
+            print(e)
+            raise e
 
     async def _set_status(self, status: GameStatus, *args):
         # Transition function for various game states
@@ -190,7 +237,7 @@ class FFAMultiChoice:
             await self._end_question()
         elif self._status == GameStatus.ENDING:
             if self._player_count > 0:
-                print(f"I'd have computed the winner and played silly sounds, etc.")
+                await self._end_game()
             self._trivia_bot.cleanup_game(self)
 
     def get_guild_id(self):

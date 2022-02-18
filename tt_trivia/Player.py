@@ -26,6 +26,9 @@ class PLayer:
         return self.name
 
     @property
+    def get_id(self):
+        return self.id
+
     def get_score(self):
         return self.score
 
