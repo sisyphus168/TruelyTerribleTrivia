@@ -8,9 +8,9 @@ import asyncio
 
 SKIP_THRESHOLD = 2/3
 # # of seconds to wait
-WAIT_PLAYERS = 10
+WAIT_PLAYERS = 20
 MAX_PLAYERS = 20
-ANSWER_TIME = 30
+ANSWER_TIME = 20
 
 
 class GameStatus(enum.Enum):
@@ -75,16 +75,21 @@ class FFAMultiChoice:
         except Exception as e:
             await self._set_status(GameStatus.FAILED)
 
+    async def end(self):
+        # TODO: this is gonna have to cancel all scheduled tasks for this game that are on the event loop
+        # Then set game state to ending
+        pass
+
     async def _wait_players(self):
         print("Waiting for players")
         try:
             await self._trivia_bot.say(self.get_guild_id(),
-                                       f"Game starting in {WAIT_PLAYERS} seconds. Type \"play\" to join!")
+                                       f"Game starting in {WAIT_PLAYERS} seconds. Type \"play\" to join!\n\n")
             half_wait = round(WAIT_PLAYERS/2)
             start = time.perf_counter()
             await asyncio.sleep(half_wait)
             await self._trivia_bot.say(self.get_guild_id(),
-                                       f"Game starting in {half_wait} seconds. Type \"play\" to join!")
+                                       f"Game starting in {half_wait} seconds. Type \"play\" to join!\n\n")
             await asyncio.sleep(half_wait)
             end = time.perf_counter()
             print(f"Waited {end - start:.4f} seconds. ")
@@ -93,7 +98,7 @@ class FFAMultiChoice:
                 await self._trivia_bot.say(self._guild_id, "Nobody wanted to play... sad.")
                 await self._set_status(GameStatus.ENDING)
                 return
-            start_msg = f"\nFree for all difficulty: {self._questions.get_difficulty()} category: {self._questions.get_category()}.\n"
+            start_msg = f"\n**Game: Free for all, difficulty: {self._questions.get_difficulty()}, category: {self._questions.get_category()},.\n**"
             start_msg += f"If you wish to skip a question answer \"skip!\". "
             start_msg += f"To skip {SKIP_THRESHOLD:.0%} of players or more must vote to skip."
             start_msg += f" Otherwise a skip vote counts as an incorrect answer.\n"
@@ -116,11 +121,12 @@ class FFAMultiChoice:
             await self._set_status(GameStatus.ENDING)
             return
         self._current_question = question
-        q_str = f"Question No {self._questions.get_index()}:\n"
+        q_str = f"**Question No {self._questions.get_index()}:**\n"
         q_str += f"{question.question}"
         for char, answer in zip("abcd", question.choices):
             q_str += f"\n\t{char}. {answer}"
-        await self._trivia_bot.speak(self._guild_id, [(q_str, None), (f"\n{ANSWER_TIME} seconds to answer.", None)])
+        q_str += "\n\n"
+        await self._trivia_bot.speak(self._guild_id, [(q_str, None), (f"\n{ANSWER_TIME} seconds to answer.\n\n", None)])
         # TODO: Remove this, debugging/testing purposes only... unless...
         print("answer:", self._current_question.answer)
         await self._set_status(GameStatus.WAIT_ANSWERS)
@@ -139,7 +145,7 @@ class FFAMultiChoice:
     async def _end_question(self):
         if self._skip_question():
             self._skipped_questions += 1
-            await self._trivia_bot.say(self._guild_id, "Question skipped!")
+            await self._trivia_bot.say(self._guild_id, "**Question skipped!**\n\n")
         # Loop over players, update their scores, streak, and perfect status
         else:
             correct = []
@@ -157,7 +163,7 @@ class FFAMultiChoice:
                     player.streak = 0
                 scores_msg += f"\n\t{player.name}: {player.score}"
                 print(f"{player=}")
-            question_sum_msg = correct_msg + "\n" + scores_msg + "\n"
+            question_sum_msg = correct_msg + "\n" + scores_msg + "\n\n"
             await self._trivia_bot.say(self._guild_id, question_sum_msg, None)
             await self._question_report(correct)
         # Game flow should allow a brief pause here
@@ -171,7 +177,7 @@ class FFAMultiChoice:
         for player in correct_players:
             streak = player.streak
             if streak > 2:
-                steak_msg = f"{player.name} is on a {streak}-streak!"
+                steak_msg = f"{player.name} is on a {streak}-streak!\n\n"
                 streak_wav = f"{streak}streak.wav"
                 # Let's not spam the voice channel, check if the announcement is already going to play
                 if streak_wav not in callouts:

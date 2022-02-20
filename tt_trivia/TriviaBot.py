@@ -11,19 +11,18 @@ from dataclasses import field
 
 # TODO: Write help message and commands list
 HELP_MESSAGE = """
-This will be the help message
+TODO: help message for now type ttt commands for a commands list
 """
 
 COMMANDS_LIST = """
 Commands to Terrible Trivia Bot must be prefixed with "ttt". Commands are case insensitive.
 
 Commands:
-    - "commands" or "command list": Reques                game = GAMEMODE_CLASSES[game_mode](q_set, guild_id, self)
-                self._games[guild_id] = game
-                return Truet this list
+    - "commands" or "command list": Request a list of commands 
     - "help": Request the help message
     - "categories": get a list of categories
-    - "start mc {1-50} {difficulty} {category}": Start a multiple choice free for all game.
+    - "start mc {num of questions 1-50} {difficulty} cat {category}": Start a multiple choice free for all game.
+        - **Note**: Only "start mc" and "start mc num" work right now
         - 1-50 questions. Default of 20 questions.
         - type "ttt categories" for a list of categories. Default is general knowledge.
         - difficulties: easy, medium, hard. Leave blank for a mix.
@@ -63,7 +62,7 @@ class TriviaBot(discord.Client):
     async def _init_voice_clients(self):
         for guild in self.guilds:
             g_id = guild.id
-            vc: discord.VoiceChannel = discord.utils.get(guild.voice_channels, name="TerribleTrivia")
+            vc: discord.VoiceProtocol = discord.utils.get(guild.voice_channels, name="TerribleTrivia")
             if vc is not None:
                 client = await vc.connect()
                 self._voice_clients[g_id] = client
@@ -90,12 +89,16 @@ class TriviaBot(discord.Client):
                 # only start a game if one is not already begun for this guild
                 if message.guild.id not in self._games:
                     if await self._setup_game(msg, message.guild.id):
-                        await message.reply("Success! Starting your game...")
+                        await message.reply("**Success! Starting your game...**\n")
                         await self._games[message.guild.id].start()
                     else:
                         await message.reply("Ooops, invalid start command. Type \"ttt help\" or \"ttt commands\" for help.")
                 else:
                     await message.reply(f"Cannot start a new game while one is currently running on this server.")
+            # TODO: Implement an end game command
+            # elif msg == "end":
+            #     if self.has_game(message.guild.id):
+            #         await message.reply(f"Game is ending early")
         elif self.has_game(message.guild.id):
             await self._pass_message_to_game(message, message.guild.id)
 
@@ -108,7 +111,6 @@ class TriviaBot(discord.Client):
                     await self.say(g_id, f"{message.author.name} added to players!")
         elif game.get_state() == GameStatus.WAIT_ANSWERS:
             game.receive_answer(message)
-        # TODO: Handle other game states
 
     async def on_ready(self):
         logger.info(f"{self.user} logged on.")
@@ -129,18 +131,16 @@ class TriviaBot(discord.Client):
             if voice_client is not None and sound_file is not None:
                 while voice_client.is_playing():
                     await asyncio.sleep(1)
-                audio_source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(os.path.join(self._sound_path, sound_file)))
+                source_path = os.path.join(self._sound_path, sound_file)
+                audio_source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(source_path))
                 voice_client.play(audio_source)
 
     async def say(self, guild_id: int, msg: str, sound_file: str | None = None):
         await self.speak(guild_id, [(msg, sound_file)])
 
-    # TODO: Make an at say for directed messages
-
     async def _setup_game(self, msg: str, guild_id: int):
         pair = self._parse_start_message(msg)
         if pair is None:
-            print(f"pair was none {pair}")
             return False
         game_mode, q_set = pair[0], pair[1]
         try:
@@ -150,18 +150,19 @@ class TriviaBot(discord.Client):
             return True
             # else:
             #     return False
-        except ValueError as e:
-            logger.error(f"Exception: {e}")
+        except ValueError | AssertionError as err:
+            logger.error(f"Exception: {err}")
             return False
 
     def _parse_start_message(self, msg: str) -> tuple[str, QuestionSet] | None:
         # Some wacky regex to parse and extract the start command args. Pass via arglist to QuestionSet ctor
         # TODO: still broken for "ttt start mc num 10 cat geography"
-        command_pattern = re.compile("start (mc|tf|free)( num \d{1,2})?( diff (easy|medium|hard))?( cat [a-zA-Z &]+)?")
-        num_pattern = re.compile("num \d{1,2}")
-        diff_pattern = re.compile("diff easy|medium|hard")
-        cat_pattern = re.compile("cat [a-zA-Z &]+")
-        gamemode_pattern = re.compile(" (mc|tf|free) ?")
+        print(f"{msg=}")
+        command_pattern = re.compile("start (mc|tf|free)( \d{1,2})?( (easy|medium|hard))?( cat [a-zA-Z &]+$)?")
+        num_pattern = re.compile("\d{1,2}")
+        diff_pattern = re.compile("easy|medium|hard")
+        cat_pattern = re.compile("cat [a-zA-Z &]+$")
+        gamemode_pattern = re.compile("(mc|tf|free)")
         if command_pattern.fullmatch(msg) is None:
             logger.info(f"Invalid start command: {msg}")
             return None
@@ -170,20 +171,19 @@ class TriviaBot(discord.Client):
             q_type = self._game_code_to_q_type[chunks[0]]
             kwargs = {}
             if match := num_pattern.search(msg):
-                kwargs["num"] = int(msg[match.start()+4: match.end()])
+                kwargs["num"] = int(msg[match.start(): match.end()])
             if match := diff_pattern.search(msg):
-                kwargs["difficulty"] = msg[match.start()+5: match.end()]
+                kwargs["difficulty"] = msg[match.start(): match.end()]
             if match := cat_pattern.search(msg):
-                kwargs["category"] = msg[match.start()+4: match.end()]
+                kwargs["category"] = msg[match.start()+4: match.end()]  # add 4 to remove "cat" portion
             if match := gamemode_pattern.search(msg):
                 game_mode = msg[match.start(): match.end()].strip()
                 return game_mode, QuestionSet(q_type, **kwargs)
             else:
-                print("I botched the RegEx")
+                logger.error("I botched the RegEx")
                 return None
-        except Exception as e:
-            logger.error(f"Exception: {e}")
-            print(e)
+        except Exception as err:
+            logger.error(f"Exception: {err}")
             return None
 
     def cleanup_game(self, game: FFAMultiChoice):
