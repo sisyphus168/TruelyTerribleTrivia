@@ -95,10 +95,9 @@ class TriviaBot(discord.Client):
                         await message.reply("Ooops, invalid start command. Type \"ttt help\" or \"ttt commands\" for help.")
                 else:
                     await message.reply(f"Cannot start a new game while one is currently running on this server.")
-            # TODO: Implement an end game command
-            # elif msg == "end":
-            #     if self.has_game(message.guild.id):
-            #         await message.reply(f"Game is ending early")
+            elif msg == "end":
+                if self.has_game(message.guild.id):
+                    await self._games[message.guild.id].end()
         elif self.has_game(message.guild.id):
             await self._pass_message_to_game(message, message.guild.id)
 
@@ -145,7 +144,7 @@ class TriviaBot(discord.Client):
         game_mode, q_set = pair[0], pair[1]
         try:
             # if game_mode == "mc":
-            game = GAMEMODE_CLASSES[game_mode](q_set, guild_id, self)
+            game = GAMEMODE_CLASSES[game_mode](q_set, guild_id, self, logger)
             self._games[guild_id] = game
             return True
             # else:
@@ -156,7 +155,6 @@ class TriviaBot(discord.Client):
 
     def _parse_start_message(self, msg: str) -> tuple[str, QuestionSet] | None:
         # Some wacky regex to parse and extract the start command args. Pass via arglist to QuestionSet ctor
-        # TODO: still broken for "ttt start mc num 10 cat geography"
         print(f"{msg=}")
         command_pattern = re.compile("start (mc|tf|free)( \d{1,2})?( (easy|medium|hard))?( cat [a-zA-Z &]+$)?")
         num_pattern = re.compile("\d{1,2}")
