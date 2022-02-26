@@ -1,4 +1,3 @@
-import enum
 import time
 import random
 from QuestionSet import QuestionSet, MCQuestion
@@ -7,7 +6,9 @@ import discord
 from Player import PLayer
 import asyncio
 from logging import Logger
+from FFAGame import GameStatus, FFAGame
 
+# TODO: These should probably be set via .env
 SKIP_THRESHOLD = 2/3
 # # of seconds to wait
 WAIT_PLAYERS = 20
@@ -15,19 +16,7 @@ MAX_PLAYERS = 20
 ANSWER_TIME = 20
 
 
-class GameStatus(enum.Enum):
-    STARTING = 0
-    GETTING_PLAYERS = 1
-    ASKING = 2
-    WAIT_ANSWERS = 3
-    QUESTION_RESULTS = 4
-    ENDING = 5
-    FAILED = 6
-    STOPPED = 7
-
-
 class FFAMultiChoice:
-    # Delayed import to avoid cyclic import
     _status: GameStatus
     _players: dict[int, PLayer]
     _player_count: int
@@ -42,7 +31,7 @@ class FFAMultiChoice:
         self._status = GameStatus.STARTING
         self._players = {}
         self._player_count = 0
-        self._questions = q_set
+        self._questions = q_set  # TODO: Game classes should be creating their own QuestionSet
         self._guild_id = g_id
         self._trivia_bot = bot
         self._current_question = None
@@ -220,7 +209,7 @@ class FFAMultiChoice:
         if winner.is_perfect():
             await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
 
-    async def _failed_game(self, e: Exception):
+    async def _handle_failed_game(self, e: Exception):
         self._logger.exception(f"Critical failure ancountereD: {e}")
         self._flush_tasks()
         self._trivia_bot.cleanup_game(self)
@@ -242,13 +231,14 @@ class FFAMultiChoice:
     async def _set_status(self, status: GameStatus, **kwargs):
         # Transition function for various game states
         self._status = status
-        print(f"Status of game {self._guild_id} set to {self._status}")
+        self._logger.info(f"Status of game {self._guild_id} set to {self._status}")
         task = None
+        if self._status == GameStatus.FAILED:
+            if len(kwargs) == 1 and isinstance(kwargs["err"], Exception):
+                await self._handle_failed_game(kwargs["err"])
+                return
         try:
-            if self._status == GameStatus.FAILED:
-                if len(kwargs) == 1 and isinstance(kwargs["err"], Exception):
-                    await self._failed_game(kwargs["err"])
-            elif self._status == GameStatus.GETTING_PLAYERS:
+            if self._status == GameStatus.GETTING_PLAYERS:
                 task = asyncio.create_task(self._wait_players())
             elif self._status == GameStatus.ASKING:
                 task = asyncio.create_task(self._ask_next_question())
@@ -269,7 +259,7 @@ class FFAMultiChoice:
             self._task_stack.append(task)
             await task
         except Exception as e:
-            print(e)
+            self._logger.error(e)
             await self._set_status(GameStatus.FAILED, err=e)
 
     def get_guild_id(self):

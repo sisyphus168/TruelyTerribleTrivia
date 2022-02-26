@@ -153,10 +153,15 @@ class QuestionSet:
 
 
 @dataclass
-class MCQuestion:
+class Question:
     cat: str
     diff: str
     question: str
+    answer: bool | str
+
+
+@dataclass
+class MCQuestion(Question):
     answer: str
     choices: list[str]
     answer_index: int
@@ -171,36 +176,22 @@ class MCQuestion:
 
 
 @dataclass
-class TFQuestion:
-    cat: str
-    diff: str
-    question: str
+class TFQuestion(Question):
     answer: bool
 
     @staticmethod
     def get_q_type():
         return Qtype.TRUE_FALSE
 
-    @staticmethod
-    def get_index(char):
-        return "abcd".index(char)
-
 
 # For use in eventual free response mode
 @dataclass
-class FreeQuestion:
-    cat: str
-    diff: str
-    question: str
+class FreeQuestion(Question):
     answer: str
 
     @staticmethod
     def get_q_type():
         return Qtype.FREE_RESPONSE
-
-    @staticmethod
-    def get_index(char):
-        return "abcd".index(char)
 
 
 async def main():

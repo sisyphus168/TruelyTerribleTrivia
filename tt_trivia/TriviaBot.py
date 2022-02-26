@@ -7,7 +7,6 @@ import re
 import json
 from QuestionSet import QuestionSet, Qtype
 from FFAMultiChoice import FFAMultiChoice, GameStatus
-from dataclasses import field
 
 # TODO: Write help message and commands list
 HELP_MESSAGE = """
