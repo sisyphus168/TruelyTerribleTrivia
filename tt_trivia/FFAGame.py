@@ -53,7 +53,7 @@ class FFAGame(ABC):
         pass
 
     @abstractmethod
-    async def _set_status(self):
+    async def _set_status(self, status: GameStatus, **kwargs):
         pass
 
     # inheritable methods
