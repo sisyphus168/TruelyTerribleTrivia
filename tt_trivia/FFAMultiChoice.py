@@ -1,11 +1,8 @@
 import time
-import random
 from QuestionSet import QuestionSet, MCQuestion
-from collections import deque
 import discord
 from Player import PLayer
 import asyncio
-from logging import Logger
 from FFAGame import GameStatus, FFAGame
 
 # TODO: These should probably be set via .env
@@ -16,40 +13,11 @@ MAX_PLAYERS = 20
 ANSWER_TIME = 20
 
 
-class FFAMultiChoice:
-    _status: GameStatus
-    _players: dict[int, PLayer]
-    _player_count: int
-    _questions: QuestionSet
-    _guild_id: int
+class FFAMultiChoice(FFAGame):
     _current_question: MCQuestion | None
-    _skipped_questions: int
-    _task_stack: deque[asyncio.Task]
-    _logger: Logger
 
     def __init__(self, q_set: QuestionSet, g_id: int, bot, logger):
-        self._status = GameStatus.STARTING
-        self._players = {}
-        self._player_count = 0
-        self._questions = q_set  # TODO: Game classes should be creating their own QuestionSet
-        self._guild_id = g_id
-        self._trivia_bot = bot
-        self._current_question = None
-        self._skipped_questions = 0
-        self._task_stack = deque(maxlen=250)
-        self._logger = logger
-
-    def add_player(self, player_user: discord.User) -> bool:
-        if self._status == GameStatus.GETTING_PLAYERS:
-            p_name = player_user.name
-            p_id = player_user.id
-            if id not in self._players:
-                player = PLayer(p_name, p_id, 0, 0, True)
-                self._players[p_id] = player
-                self._player_count += 1
-                self._logger.info(f"Added player {player}")
-                return True
-        return False
+        super().__init__(q_set, g_id, bot, logger)
 
     def receive_answer(self, message: discord.Message):
         ans = message.content.lower().strip()
@@ -61,15 +29,6 @@ class FFAMultiChoice:
             return
         if ans in {"a", "b", "c", "d", "skip!"} or ans in [a.strip().lower() for a in self._current_question.choices]:
             self._players[message.author.id].answer = ans
-
-    async def start(self):
-        random.seed(time.time())
-        if not self._questions.is_initialized():
-            await self._questions.initialize()
-        await self._set_status(GameStatus.GETTING_PLAYERS)
-
-    async def end(self):
-        await self._set_status(GameStatus.STOPPED)
 
     async def _wait_players(self):
         self._logger.info("Waiting for players")
@@ -139,6 +98,8 @@ class FFAMultiChoice:
             correct_msg = f"Correct Answer: {answer}\nCorrect Players:"
             scores_msg = "Scores:"
             for player in self._players.values():
+                if player.answer == "a":
+                    raise RuntimeError("Oppsie Poopsie")
                 if player.answer != "skip!" and self._check_answer(player.answer):
                     player.score += 1
                     player.streak += 1
@@ -209,25 +170,6 @@ class FFAMultiChoice:
         if winner.is_perfect():
             await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
 
-    async def _handle_failed_game(self, e: Exception):
-        self._logger.exception(f"Critical failure ancountereD: {e}")
-        self._flush_tasks()
-        self._trivia_bot.cleanup_game(self)
-        await self._trivia_bot.say(self._guild_id, "Critical error encountered. Stopping game.")
-
-    async def _stop_game(self):
-        print(f"game stopped")
-        self._flush_tasks()
-        self._trivia_bot.cleanup_game(self)
-        await self._trivia_bot.say(self._guild_id, "Game stopped.")
-
-    def _flush_tasks(self):
-        # Method to cancel up the coroutine tasks in the task stack
-        while len(self._task_stack) > 0:
-            task = self._task_stack.pop()
-            if task is not None:
-                task.cancel()
-
     async def _set_status(self, status: GameStatus, **kwargs):
         # Transition function for various game states
         self._status = status
@@ -259,11 +201,6 @@ class FFAMultiChoice:
             self._task_stack.append(task)
             await task
         except Exception as e:
+            print(f"Caught exception {e}")
             self._logger.error(e)
             await self._set_status(GameStatus.FAILED, err=e)
-
-    def get_guild_id(self):
-        return self._guild_id
-
-    def get_state(self):
-        return self._status
