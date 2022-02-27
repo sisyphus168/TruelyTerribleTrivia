@@ -74,13 +74,17 @@ class FFAMultiChoice(FFAGame):
         for char, answer in zip("abcd", question.choices):
             q_str += f"\n\t{char}. {answer}"
         q_str += "\n\n"
-        await self._trivia_bot.speak(self._guild_id, [(q_str, None), (f"\n{ANSWER_TIME} seconds to answer.\n\n", None)])
+        await self._trivia_bot.speak(self._guild_id,
+                                     [(q_str, None), (f"\n{ANSWER_TIME} seconds to answer.\n\n", "question_ready.wav")])
         await self._set_status(GameStatus.WAIT_ANSWERS)
 
     async def _wait_answers(self):
         await asyncio.sleep(ANSWER_TIME - 5)
-        await self._trivia_bot.say(self._guild_id, "5 seconds left!")
-        await asyncio.sleep(5)
+        start = time.perf_counter()
+        await self._trivia_bot.say(self._guild_id, "5 seconds left!", "countdown5.wav")
+        end = time.perf_counter()
+        # Pad out the full 5 seconds
+        await asyncio.sleep(5 - (end-start))
         await self._set_status(GameStatus.QUESTION_RESULTS)
 
     def _clear_last_question(self):
