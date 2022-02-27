@@ -1,5 +1,5 @@
 import time
-from QuestionSet import QuestionSet, MCQuestion
+from QuestionSet import QuestionSet, MCQuestion, Qtype
 import discord
 from Player import PLayer
 import asyncio
@@ -16,8 +16,9 @@ ANSWER_TIME = 20
 class FFAMultiChoice(FFAGame):
     _current_question: MCQuestion | None
 
-    def __init__(self, q_set: QuestionSet, g_id: int, bot, logger):
-        super().__init__(q_set, g_id, bot, logger)
+    def __init__(self, q_set_kwargs: dict[str,str], g_id: int, bot, logger):
+        super().__init__(g_id, bot, logger)
+        self._questions = QuestionSet(Qtype.MULTI_CHOICE, **q_set_kwargs)
 
     def receive_answer(self, message: discord.Message):
         ans = message.content.lower().strip()

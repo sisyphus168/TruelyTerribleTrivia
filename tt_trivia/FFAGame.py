@@ -36,11 +36,10 @@ class FFAGame(ABC):
 
     # Abstract methods
     @abstractmethod
-    def __init__(self, q_set: QuestionSet.QuestionSet, g_id, bot, logger):
+    def __init__(self, g_id, bot, logger):
         self._status = GameStatus.STARTING
         self._players = {}
         self._player_count = 0
-        self._questions = q_set
         self._guild_id = g_id
         self._trivia_bot = bot
         self._current_question = None

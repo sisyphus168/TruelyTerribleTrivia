@@ -25,11 +25,9 @@ class ApiError(RuntimeError):
 
 
 class QuestionSet:
-    # def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, category: str = "General Knowledge", difficulty: str = "any",
-    #              num: int = 10):
     def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, **kwargs):
         # keyword args set to default if need be
-        category = kwargs["category"] if "category" in kwargs else "General Knowledge"
+        category = kwargs["category"] if "category" in kwargs else "general knowledge"
         difficulty = kwargs["difficulty"] if "difficulty" in kwargs else "any"
         num = kwargs["num"] if "num" in kwargs else 20
         with open("../resource/categories.json", "r") as f:
