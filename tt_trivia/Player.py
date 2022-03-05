@@ -2,7 +2,7 @@ import dataclasses
 
 
 @dataclasses.dataclass
-class PLayer:
+class Player:
     name: str
     id: int
     score: int = 0

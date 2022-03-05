@@ -25,11 +25,9 @@ class ApiError(RuntimeError):
 
 
 class QuestionSet:
-    # def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, category: str = "General Knowledge", difficulty: str = "any",
-    #              num: int = 10):
     def __init__(self, q_type: Qtype = Qtype.MULTI_CHOICE, **kwargs):
         # keyword args set to default if need be
-        category = kwargs["category"] if "category" in kwargs else "General Knowledge"
+        category = kwargs["category"] if "category" in kwargs else "general knowledge"
         difficulty = kwargs["difficulty"] if "difficulty" in kwargs else "any"
         num = kwargs["num"] if "num" in kwargs else 20
         with open("../resource/categories.json", "r") as f:
@@ -153,10 +151,15 @@ class QuestionSet:
 
 
 @dataclass
-class MCQuestion:
+class Question:
     cat: str
     diff: str
     question: str
+    answer: bool | str
+
+
+@dataclass
+class MCQuestion(Question):
     answer: str
     choices: list[str]
     answer_index: int
@@ -171,36 +174,22 @@ class MCQuestion:
 
 
 @dataclass
-class TFQuestion:
-    cat: str
-    diff: str
-    question: str
+class TFQuestion(Question):
     answer: bool
 
     @staticmethod
     def get_q_type():
         return Qtype.TRUE_FALSE
 
-    @staticmethod
-    def get_index(char):
-        return "abcd".index(char)
-
 
 # For use in eventual free response mode
 @dataclass
-class FreeQuestion:
-    cat: str
-    diff: str
-    question: str
+class FreeQuestion(Question):
     answer: str
 
     @staticmethod
     def get_q_type():
         return Qtype.FREE_RESPONSE
-
-    @staticmethod
-    def get_index(char):
-        return "abcd".index(char)
 
 
 async def main():

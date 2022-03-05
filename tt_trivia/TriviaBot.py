@@ -7,7 +7,6 @@ import re
 import json
 from QuestionSet import QuestionSet, Qtype
 from FFAMultiChoice import FFAMultiChoice, GameStatus
-from dataclasses import field
 
 # TODO: Write help message and commands list
 HELP_MESSAGE = """
@@ -138,13 +137,13 @@ class TriviaBot(discord.Client):
         await self.speak(guild_id, [(msg, sound_file)])
 
     async def _setup_game(self, msg: str, guild_id: int):
-        pair = self._parse_start_message(msg)
-        if pair is None:
+        parsed_setup_tuple = self._parse_start_message(msg)
+        if parsed_setup_tuple is None or len(parsed_setup_tuple) != 3:
             return False
-        game_mode, q_set = pair[0], pair[1]
         try:
-            # if game_mode == "mc":
-            game = GAMEMODE_CLASSES[game_mode](q_set, guild_id, self, logger)
+            game_mode = parsed_setup_tuple[0]
+            q_set_kwargs = parsed_setup_tuple[2]
+            game = GAMEMODE_CLASSES[game_mode](q_set_kwargs, guild_id, self, logger)
             self._games[guild_id] = game
             return True
             # else:
@@ -167,16 +166,16 @@ class TriviaBot(discord.Client):
         try:
             chunks = msg.removeprefix("start ").split()
             q_type = self._game_code_to_q_type[chunks[0]]
-            kwargs = {}
+            q_set_kwargs = {}
             if match := num_pattern.search(msg):
-                kwargs["num"] = int(msg[match.start(): match.end()])
+                q_set_kwargs["num"] = int(msg[match.start(): match.end()])
             if match := diff_pattern.search(msg):
-                kwargs["difficulty"] = msg[match.start(): match.end()]
+                q_set_kwargs["difficulty"] = msg[match.start(): match.end()]
             if match := cat_pattern.search(msg):
-                kwargs["category"] = msg[match.start()+4: match.end()]  # add 4 to remove "cat" portion
+                q_set_kwargs["category"] = msg[match.start()+4: match.end()]  # add 4 to remove "cat" portion
             if match := gamemode_pattern.search(msg):
                 game_mode = msg[match.start(): match.end()].strip()
-                return game_mode, QuestionSet(q_type, **kwargs)
+                return game_mode, q_type, q_set_kwargs  # QuestionSet(q_type, **kwargs)
             else:
                 logger.error("I botched the RegEx")
                 return None
