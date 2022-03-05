@@ -1,9 +1,10 @@
 import time
 from QuestionSet import QuestionSet, MCQuestion, Qtype
 import discord
-from Player import PLayer
+from Player import Player
 import asyncio
 from FFAGame import GameStatus, FFAGame
+
 
 # TODO: These should probably be set via .env
 SKIP_THRESHOLD = 2/3
@@ -103,8 +104,6 @@ class FFAMultiChoice(FFAGame):
             correct_msg = f"Correct Answer: {answer}\nCorrect Players:"
             scores_msg = "Scores:"
             for player in self._players.values():
-                if player.answer == "a":
-                    raise RuntimeError("Oppsie Poopsie")
                 if player.answer != "skip!" and self._check_answer(player.answer):
                     player.score += 1
                     player.streak += 1
@@ -122,7 +121,7 @@ class FFAMultiChoice(FFAGame):
         await asyncio.sleep(5)
         await self._set_status(GameStatus.ASKING)
 
-    async def _question_report(self, correct_players: list[PLayer]):
+    async def _question_report(self, correct_players: list[Player]):
         # Method to report the scores after the question, and announce streak callouts
         callouts = set()
         announcements = []
@@ -162,18 +161,26 @@ class FFAMultiChoice(FFAGame):
 
     async def _end_game(self):
         self._logger.info("ending game")
-        players: list[PLayer] = list(self._players.values())
+        players: list[Player] = list(self._players.values())
         players.sort(reverse=True, key=lambda p: p.score)
         winner = players[0]
         game_report = "Final scores:\n"
         for i, player in enumerate(players):
             game_report += f"{i + 1}. {player}: {player.score}\n"
-        await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> is the winner with {winner.score} points!",
-                                   "victory.wav")
-        # Quite an achievement
-        self._logger.info("checking if player is perfect")
-        if winner.is_perfect():
-            await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
+        # check for ties
+        if len(players) > 1 and players[1].score == winner.score:
+            winners: list[Player] = list(map(lambda p: p.score == winner.score, players))
+            tie_result = f"@everyone There was a {len(winners)} way tie! Winners:\n"
+            for winner in winners:
+                tie_result += f"\n\t- {winner.name}"
+                await self._trivia_bot.say(self._guild_id, tie_result)
+        else:
+            await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> is the winner with {winner.score} points!",
+                                       "victory.wav")
+            # Quite an achievement
+            self._logger.info("checking if player is perfect")
+            if winner.is_perfect():
+                await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
 
     async def _set_status(self, status: GameStatus, **kwargs):
         # Transition function for various game states

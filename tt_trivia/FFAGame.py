@@ -6,7 +6,7 @@ from collections import deque
 import time
 import random
 import QuestionSet
-from Player import PLayer
+from Player import Player
 import discord
 
 
@@ -23,9 +23,8 @@ class GameStatus(enum.Enum):
 
 
 class FFAGame(ABC):
-    # TODO: Finish implementing this class, then test by hading FFAMultiChoice inherit from it
     _status: GameStatus
-    _players: dict[int, PLayer]
+    _players: dict[int, Player]
     _player_count: int
     _questions: QuestionSet
     _guild_id: int
@@ -61,7 +60,7 @@ class FFAGame(ABC):
             p_name = player_user.name
             p_id = player_user.id
             if id not in self._players:
-                player = PLayer(p_name, p_id, 0, 0, True)
+                player = Player(p_name, p_id, 0, 0, True)
                 self._players[p_id] = player
                 self._player_count += 1
                 self._logger.info(f"Added player {player}")
