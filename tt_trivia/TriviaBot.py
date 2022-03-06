@@ -1,4 +1,4 @@
-import discord
+import nextcord
 import asyncio
 import dotenv
 import os
@@ -33,11 +33,11 @@ GAMEMODE_CLASSES = {
 }
 
 
-class TriviaBot(discord.Client):
+class TriviaBot(nextcord.Client):
     _sound_path: str
     _sounds_available: set[str]
     _games: dict[int, FFAMultiChoice]
-    _voice_clients: dict[int, discord.VoiceClient]
+    _voice_clients: dict[int, nextcord.VoiceClient]
     _game_code_to_q_type: dict[str, Qtype]
 
     def __init__(self, sound_path):
@@ -61,7 +61,7 @@ class TriviaBot(discord.Client):
     async def _init_voice_clients(self):
         for guild in self.guilds:
             g_id = guild.id
-            vc: discord.VoiceProtocol = discord.utils.get(guild.voice_channels, name="TerribleTrivia")
+            vc: nextcord.VoiceProtocol = nextcord.utils.get(guild.voice_channels, name="TerribleTrivia")
             if vc is not None:
                 client = await vc.connect()
                 self._voice_clients[g_id] = client
@@ -69,14 +69,14 @@ class TriviaBot(discord.Client):
             else:
                 print(f"Failed to find voice channel for guild {guild.name}")
 
-    async def on_message(self, message: discord.Message):
+    async def on_message(self, message: nextcord.Message):
         if message.author.id == self.user.id:
             return
         # Does message start with ttt?
         msg = str(message.content).lower()
         if msg.startswith("ttt "):
             msg = msg.removeprefix("ttt ").strip()
-            channel: discord.TextChannel = message.channel
+            channel: nextcord.TextChannel = message.channel
             if msg == "help":
                 await channel.send(HELP_MESSAGE)
             elif msg == "commands" or msg == "command list":
@@ -100,7 +100,7 @@ class TriviaBot(discord.Client):
         elif self.has_game(message.guild.id):
             await self._pass_message_to_game(message, message.guild.id)
 
-    async def _pass_message_to_game(self, message: discord.Message, g_id: int):
+    async def _pass_message_to_game(self, message: nextcord.Message, g_id: int):
         game: FFAMultiChoice = self._games[g_id]
         if game.get_state() == GameStatus.GETTING_PLAYERS:
             if message.content.startswith("play"):
@@ -118,11 +118,11 @@ class TriviaBot(discord.Client):
 
     async def speak(self, guild_id: int, announcements: list[tuple[str, str | None]]):
         # "Speaks" ie. prints a message and plays a sound over voice client (if possible)
-        guild: discord.Guild = discord.utils.find(lambda g: g.id == guild_id, self.guilds)
+        guild: nextcord.Guild = nextcord.utils.find(lambda g: g.id == guild_id, self.guilds)
         if guild is None:
             raise ValueError(f"Invalid guild id {guild_id}")
-        text_channel: discord.TextChannel = discord.utils.get(guild.text_channels, name="terrible-trivia")
-        voice_client: discord.VoiceClient = self._voice_clients.get(guild_id)
+        text_channel: nextcord.TextChannel = nextcord.utils.get(guild.text_channels, name="terrible-trivia")
+        voice_client: nextcord.VoiceClient = self._voice_clients.get(guild_id)
         for msg, sound_file in announcements:
             if text_channel is not None:
                 await text_channel.send(msg)
@@ -130,7 +130,7 @@ class TriviaBot(discord.Client):
                 while voice_client.is_playing():
                     await asyncio.sleep(1)
                 source_path = os.path.join(self._sound_path, sound_file)
-                audio_source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(source_path))
+                audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path))
                 voice_client.play(audio_source)
 
     async def say(self, guild_id: int, msg: str, sound_file: str | None = None):
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     # Add some logging
-    logger = logging.getLogger('discord')
+    logger = logging.getLogger('nextcord')
     logger.setLevel(logging.DEBUG)
     handler = logging.FileHandler(filename='trivia.log', encoding='utf-8', mode='w')
     handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))

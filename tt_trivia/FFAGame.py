@@ -7,8 +7,7 @@ import time
 import random
 import QuestionSet
 from Player import Player
-import discord
-
+import nextcord
 
 
 class GameStatus(enum.Enum):
@@ -47,7 +46,7 @@ class FFAGame(ABC):
         self._logger = logger
 
     @abstractmethod
-    def receive_answer(self, message: discord.Message):
+    def receive_answer(self, message: nextcord.Message):
         pass
 
     @abstractmethod
@@ -55,7 +54,7 @@ class FFAGame(ABC):
         pass
 
     # inheritable methods
-    def add_player(self, player_user: discord.user) ->  bool:
+    def add_player(self, player_user: nextcord.user) ->  bool:
         if self._status == GameStatus.GETTING_PLAYERS:
             p_name = player_user.name
             p_id = player_user.id
