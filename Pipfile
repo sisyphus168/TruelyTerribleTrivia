@@ -4,11 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-"discord.py" = {extras = ["voice"], version = "*"}
 lxml = "*"
 python-dotenv = "*"
 plac = "*"
 requests = "*"
+nextcord = "*"
 
 [dev-packages]
 

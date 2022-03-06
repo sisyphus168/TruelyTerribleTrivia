@@ -1,6 +1,6 @@
 import time
 from QuestionSet import QuestionSet, MCQuestion, Qtype
-import discord
+import nextcord
 from Player import Player
 import asyncio
 from FFAGame import GameStatus, FFAGame
@@ -21,7 +21,7 @@ class FFAMultiChoice(FFAGame):
         super().__init__(g_id, bot, logger)
         self._questions = QuestionSet(Qtype.MULTI_CHOICE, **q_set_kwargs)
 
-    def receive_answer(self, message: discord.Message):
+    def receive_answer(self, message: nextcord.Message):
         ans = message.content.lower().strip()
         self._logger.info(f"Receiving answer {ans}")
         if self._current_question is None:
