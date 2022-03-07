@@ -28,6 +28,7 @@ class FFAGame(ABC):
     _questions: QuestionSet
     _guild_id: int
     _current_question: QuestionSet.Question | None
+    _current_view: nextcord.ui.View | None
     _skipped_questions: int
     _task_stack: deque[asyncio.Task]
     _logger: Logger
@@ -47,6 +48,10 @@ class FFAGame(ABC):
 
     @abstractmethod
     def receive_answer(self, message: nextcord.Message):
+        pass
+
+    @abstractmethod
+    def receive_button_answer(self, answer: str, interaction: nextcord.Interaction):
         pass
 
     @abstractmethod
@@ -99,5 +104,3 @@ class FFAGame(ABC):
             task = self._task_stack.pop()
             if task is not None:
                 task.cancel()
-
-
