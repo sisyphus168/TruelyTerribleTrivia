@@ -8,11 +8,6 @@ import json
 from QuestionSet import QuestionSet, Qtype
 from FFAMultiChoice import FFAMultiChoice, GameStatus
 
-# TODO: Write help message and commands list
-HELP_MESSAGE = """
-TODO: help message for now type ttt commands for a commands list
-"""
-
 COMMANDS_LIST = """
 Commands to Terrible Trivia Bot must be prefixed with "ttt". Commands are case insensitive.
 
@@ -77,9 +72,7 @@ class TriviaBot(nextcord.Client):
         if msg.startswith("ttt "):
             msg = msg.removeprefix("ttt ").strip()
             channel: nextcord.TextChannel = message.channel
-            if msg == "help":
-                await channel.send(HELP_MESSAGE)
-            elif msg == "commands" or msg == "command list":
+            if msg == "help" or msg == "commands" or msg == "command list":
                 await channel.send(COMMANDS_LIST)
             elif msg == "categories":
                 cat_string = "Categories:\n\t- " + "\n\t- ".join(self._categories)
@@ -121,20 +114,31 @@ class TriviaBot(nextcord.Client):
         guild: nextcord.Guild = nextcord.utils.find(lambda g: g.id == guild_id, self.guilds)
         if guild is None:
             raise ValueError(f"Invalid guild id {guild_id}")
+        for announcement in announcements:
+            await self.say(guild_id, announcement[0], announcement[1])
+
+    async def say(self, guild_id: int, msg: str, sound_file: str | None = None, view: nextcord.ui.View | None = None):
+        """
+        "Speaks" ie. prints a message and plays a sound over voice client (if possible)
+        :param guild_id:
+        :param msg:
+        :param sound_file:
+        :param view:
+        :return: None
+        """
+        guild: nextcord.Guild = nextcord.utils.find(lambda g: g.id == guild_id, self.guilds)
+        if guild is None:
+            raise ValueError(f"Invalid guild id {guild_id}")
         text_channel: nextcord.TextChannel = nextcord.utils.get(guild.text_channels, name="terrible-trivia")
         voice_client: nextcord.VoiceClient = self._voice_clients.get(guild_id)
-        for msg, sound_file in announcements:
-            if text_channel is not None:
-                await text_channel.send(msg)
-            if voice_client is not None and sound_file is not None:
-                while voice_client.is_playing():
-                    await asyncio.sleep(1)
-                source_path = os.path.join(self._sound_path, sound_file)
-                audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path))
-                voice_client.play(audio_source)
-
-    async def say(self, guild_id: int, msg: str, sound_file: str | None = None):
-        await self.speak(guild_id, [(msg, sound_file)])
+        if text_channel is not None:
+            await text_channel.send(msg, view=view)
+        if voice_client is not None and sound_file is not None:
+            while voice_client.is_playing():
+                await asyncio.sleep(1)
+            source_path = os.path.join(self._sound_path, sound_file)
+            audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path))
+            voice_client.play(audio_source)
 
     async def _setup_game(self, msg: str, guild_id: int):
         parsed_setup_tuple = self._parse_start_message(msg)

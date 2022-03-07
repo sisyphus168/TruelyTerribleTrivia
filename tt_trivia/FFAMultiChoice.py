@@ -29,8 +29,21 @@ class FFAMultiChoice(FFAGame):
         # Skip if message was from non-player
         if message.author.id not in self._players:
             return
+        # One a player skips, no taking back
+        if self._players[message.author.id].answer == "skip!":
+            return
         if ans in {"a", "b", "c", "d", "skip!"} or ans in [a.strip().lower() for a in self._current_question.choices]:
             self._players[message.author.id].answer = ans
+
+    def receive_button_answer(self, answer: str, interaction: nextcord.Interaction):
+        u_id = interaction.user.id
+        if u_id not in self._players:
+            return
+        # One a player skips, no taking back
+        if self._players[u_id].answer == "skip!":
+            return
+        self._players[u_id].answer = answer
+        self._logger.info(f"Set player {self._players[u_id].name}'s answer to {answer}")
 
     async def _wait_players(self):
         self._logger.info("Waiting for players")
@@ -70,13 +83,15 @@ class FFAMultiChoice(FFAGame):
             await self._set_status(GameStatus.ENDING)
             return
         self._current_question = question
+        q_view = McQuestionView(self)
+        self._current_view = q_view
         q_str = f"**Question No {self._questions.get_index()}:**\n"
         q_str += f"{question.question}"
         for char, answer in zip("abcd", question.choices):
             q_str += f"\n\t{char}. {answer}"
         q_str += "\n\n"
-        await self._trivia_bot.speak(self._guild_id,
-                                     [(q_str, None), (f"\n{ANSWER_TIME} seconds to answer.\n\n", "question_ready.wav")])
+        await self._trivia_bot.say(self._guild_id, q_str, view=q_view)
+        await self._trivia_bot.say(self._guild_id, f"\n{ANSWER_TIME} seconds to answer.\n\n", "question_ready.wav")
         await self._set_status(GameStatus.WAIT_ANSWERS)
 
     async def _wait_answers(self):
@@ -117,6 +132,8 @@ class FFAMultiChoice(FFAGame):
             question_sum_msg = correct_msg + "\n" + scores_msg + "\n\n"
             await self._trivia_bot.say(self._guild_id, question_sum_msg, None)
             await self._question_report(correct)
+        self._current_view.stop()
+        self._reset_answers()
         # Game flow should allow a brief pause here
         await asyncio.sleep(5)
         await self._set_status(GameStatus.ASKING)
@@ -158,6 +175,10 @@ class FFAMultiChoice(FFAGame):
         votes = len([p for p in self._players.values() if p.answer is not None and p.answer.lower() == "skip!"])
         threshold = round(SKIP_THRESHOLD * len(self._players))
         return votes >= threshold
+
+    def _reset_answers(self):
+        for player in self._players.values():
+            player.answer = None
 
     async def _end_game(self):
         self._logger.info("ending game")
@@ -216,3 +237,30 @@ class FFAMultiChoice(FFAGame):
             print(f"Caught exception {e}")
             self._logger.error(e)
             await self._set_status(GameStatus.FAILED, err=e)
+
+
+class McQuestionView(nextcord.ui.View):
+    """
+    view class to render question button gui with callback to register answers from players.
+    """
+    _game: FFAMultiChoice
+
+    def __init__(self, game: FFAMultiChoice):
+        super(McQuestionView, self).__init__()
+        self._game = game
+
+    @nextcord.ui.button(label="a", style=nextcord.ButtonStyle.green)
+    async def answer_a(self, btn: nextcord.ui.Button, interaction: nextcord.Interaction):
+        self._game.receive_button_answer("a", interaction)
+
+    @nextcord.ui.button(label="b", style=nextcord.ButtonStyle.red)
+    async def answer_b(self, btn: nextcord.ui.Button, interaction: nextcord.Interaction):
+        self._game.receive_button_answer("b", interaction)
+
+    @nextcord.ui.button(label="c", style=nextcord.ButtonStyle.blurple)
+    async def answer_c(self, btn: nextcord.ui.Button, interaction: nextcord.Interaction):
+        self._game.receive_button_answer("c", interaction)
+
+    @nextcord.ui.button(label="d", style=nextcord.ButtonStyle.grey)
+    async def answer_d(self, btn: nextcord.ui.Button, interaction: nextcord.Interaction):
+        self._game.receive_button_answer("d", interaction)
