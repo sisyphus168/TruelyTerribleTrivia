@@ -4,11 +4,7 @@ A Discord trivia bot
 ## Work To Do
 
 ### Infrastructure
-
-0. Move to nextcore api wrapper
-   1. discord.py is discontinued
-1. Buttons
-2. Voice clients on separate threads
+1. Voice clients on separate threads
 
 ### Game modes 
 1. Lives Game Mode
