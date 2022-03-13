@@ -7,6 +7,7 @@ import re
 import json
 from QuestionSet import QuestionSet, Qtype
 from FFAMultiChoice import FFAMultiChoice, GameStatus
+from FFALives import FFALives
 
 COMMANDS_LIST = """
 Commands to Terrible Trivia Bot must be prefixed with "ttt". Commands are case insensitive.
@@ -24,7 +25,8 @@ Commands:
 """
 
 GAMEMODE_CLASSES = {
-    "mc": FFAMultiChoice
+    "mc": FFAMultiChoice,
+    "lives": FFALives
 }
 
 
@@ -38,6 +40,7 @@ class TriviaBot(nextcord.Client):
     def __init__(self, sound_path):
         super(TriviaBot, self).__init__()
         self._game_code_to_q_type = {"mc": Qtype.MULTI_CHOICE,
+                                     "lives": Qtype.MULTI_CHOICE,
                                      "tf": Qtype.TRUE_FALSE,
                                      "free": Qtype.FREE_RESPONSE}
         self._sound_path = sound_path
@@ -146,6 +149,9 @@ class TriviaBot(nextcord.Client):
             return False
         try:
             game_mode = parsed_setup_tuple[0]
+            print(f"Game Mode: {game_mode}\nGAMEMODE_CLASSES keys:")
+            for k in GAMEMODE_CLASSES.keys():
+                print(k)
             q_set_kwargs = parsed_setup_tuple[2]
             game = GAMEMODE_CLASSES[game_mode](q_set_kwargs, guild_id, self, logger)
             self._games[guild_id] = game
@@ -159,11 +165,11 @@ class TriviaBot(nextcord.Client):
     def _parse_start_message(self, msg: str) -> tuple[str, QuestionSet] | None:
         # Some wacky regex to parse and extract the start command args. Pass via arglist to QuestionSet ctor
         print(f"{msg=}")
-        command_pattern = re.compile("start (mc|tf|free)( \d{1,2})?( (easy|medium|hard))?( cat [a-zA-Z &]+$)?")
+        command_pattern = re.compile("start (mc|tf|free|lives)( \d{1,2})?( (easy|medium|hard))?( cat [a-zA-Z &]+$)?")
         num_pattern = re.compile("\d{1,2}")
         diff_pattern = re.compile("easy|medium|hard")
         cat_pattern = re.compile("cat [a-zA-Z &]+$")
-        gamemode_pattern = re.compile("(mc|tf|free)")
+        gamemode_pattern = re.compile("(mc|tf|free|lives)")
         if command_pattern.fullmatch(msg) is None:
             logger.info(f"Invalid start command: {msg}")
             return None
@@ -178,13 +184,14 @@ class TriviaBot(nextcord.Client):
             if match := cat_pattern.search(msg):
                 q_set_kwargs["category"] = msg[match.start()+4: match.end()]  # add 4 to remove "cat" portion
             if match := gamemode_pattern.search(msg):
+                print("Matched a game mode")
                 game_mode = msg[match.start(): match.end()].strip()
                 return game_mode, q_type, q_set_kwargs  # QuestionSet(q_type, **kwargs)
             else:
                 logger.error("I botched the RegEx")
                 return None
         except Exception as err:
-            logger.error(f"Exception: {err}")
+            logger.error(f"Exception: {type(err)} {err}")
             return None
 
     def cleanup_game(self, game: FFAMultiChoice):

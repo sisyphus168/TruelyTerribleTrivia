@@ -21,7 +21,7 @@ class Qtype(enum.Enum):
 
 class ApiError(RuntimeError):
     def __init__(self, message):
-        super(message)
+        super().__init__(message)
 
 
 class QuestionSet:
@@ -43,6 +43,7 @@ class QuestionSet:
         self._difficulty = difficulty.lower()
         self._num = num
         self._initialized = False
+        self._session = None
 
     def get_q_type(self):
         return self._q_type
@@ -81,6 +82,19 @@ class QuestionSet:
 
     async def _fetch_questions(self, url):
         # TODO: replace requests with aiohttp asyc http request
+        if self._session is None:
+            with requests.request("GET", "https://opentdb.com/api_token.php?command=request") as response:
+                print("session request status:", response.status_code)
+                print("session content type:", response.encoding)
+                if response.status_code != 200:
+                    raise RuntimeError(f"The session http get request response code was {response.status_code}")
+                session_data = response.json()
+                if session_data["response_code"] != 0:
+                    resp_msg = session_data["response_message"]
+                    raise ApiError(f"Failed to create open TDB session: {resp_msg}")
+                self._session = session_data["token"]
+                print(f"Set session token to: {self._session}")
+        url += f"&token={self._session}"
         with requests.request("GET", url) as response:
             print("status:", response.status_code)
             print("content type:", response.encoding)
@@ -89,6 +103,9 @@ class QuestionSet:
             q_data = response.json()
             if q_data["response_code"] == 2:
                 raise ApiError(f"Bad opentdb api url: {url}")
+            elif q_data["response_code"] in {1, 4}:
+                print("API Request failed due to running out of questions")
+                raise ApiError(f"API does not have enough questions to service request: {url}")
             elif q_data["response_code"] != 0:
                 print("API Request failed")
                 raise RuntimeError(f"Get request for questions failed. {q_data['response code']=}")
