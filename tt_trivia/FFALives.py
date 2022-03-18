@@ -3,7 +3,7 @@ from FFAMultiChoice import FFAMultiChoice, McQuestionView
 import nextcord
 import time
 import random
-from QuestionSet import QuestionSet, MCQuestion, Qtype
+from QuestionSet import QuestionSet, MCQuestion
 from Player import Player
 import asyncio
 
@@ -25,7 +25,7 @@ class FFALives(FFAMultiChoice):
         added = super().add_player(player_user)
         # Players in the game mode start with 10 lives
         if added:
-            self._players[player_user.id].score = 10
+            self._players[player_user.id].score = 3 #10
         return added
 
     async def _ask_next_question(self):
@@ -100,8 +100,41 @@ class FFALives(FFAMultiChoice):
                 else:
                     announcements.append((status_msg, None))
         await self._trivia_bot.speak(self._guild_id, announcements)
+        await self._eliminate_players()
+
+    async def _end_game(self):
+        # TODO: Implement complete override to _end_game where a random victory sound is played
+        await super()._end_game()
+        await self.end()
+
+    async def _eliminate_players(self):
+        players_to_cull = [player.id for player in self._players.values() if player.score < 1]
+        if not players_to_cull:
+            return
+        announcements = None
+        # In case of a tie where everyone is out in one go, give everyone one life
+        if len(players_to_cull) == len(self._players):
+            for player_id in players_to_cull:
+                self._players[player_id].score = 1
+            announcement = ("It's a tie! All players lives set to 1.", "lives/tie.wav")
+        else:
+            announcement_msg = "Players eliminated:"
+            for player_id in players_to_cull:
+                player_name = self._players[player_id].name
+                announcement_msg += f"\n\t- {player_name}"
+                del self._players[player_id]
+            announcement = (announcement_msg, f"lives/lose{random.randint(1, 4)}.wav")
+        self._logger.info(f"Players left: {[player.name for player in self._players.values()]}")
+        await self._trivia_bot.say(self._guild_id, announcement[0], announcement[1])
+        if len(self._players) == 1:
+            await self._set_status(GameStatus.ENDING)
+        else:
+            await self._set_status(GameStatus.ASKING)
+
+
+
 
     # async def _set_status(self, status: GameStatus, **kwargs):
-    #     pass
+    #     if
 
 
