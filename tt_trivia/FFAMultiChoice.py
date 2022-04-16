@@ -1,25 +1,17 @@
-import time
 from QuestionSet import QuestionSet, MCQuestion, Qtype
 import nextcord
 from Player import Player
 import asyncio
-from FFAGame import GameStatus, FFAGame
-
-
-# TODO: These should probably be set via .env
-SKIP_THRESHOLD = 2/3
-# # of seconds to wait
-WAIT_PLAYERS = 20
-MAX_PLAYERS = 20
-ANSWER_TIME = 20
+from FFAGame import GameStatus, FFAGame, SKIP_THRESHOLD, ANSWER_TIME, WAIT_PLAYERS
 
 
 class FFAMultiChoice(FFAGame):
     _current_question: MCQuestion | None
 
-    def __init__(self, q_set_kwargs: dict[str,str], g_id: int, bot, logger):
+    def __init__(self, q_set_kwargs: dict[str, str], g_id: int, bot, logger):
         super().__init__(g_id, bot, logger)
         self._questions = QuestionSet(Qtype.MULTI_CHOICE, **q_set_kwargs)
+        self._sound_files["prepare"] = "prepare.wav"
 
     def receive_answer(self, message: nextcord.Message):
         ans = message.content.lower().strip()
@@ -45,35 +37,6 @@ class FFAMultiChoice(FFAGame):
         self._players[u_id].answer = answer
         self._logger.info(f"Set player {self._players[u_id].name}'s answer to {answer}")
 
-    async def _wait_players(self):
-        self._logger.info("Waiting for players")
-        await self._trivia_bot.say(self.get_guild_id(),
-                                   f"Game starting in {WAIT_PLAYERS} seconds. Type \"play\" to join!\n\n")
-        half_wait = round(WAIT_PLAYERS/2)
-        start = time.perf_counter()
-        await asyncio.sleep(half_wait)
-        await self._trivia_bot.say(self.get_guild_id(),
-                                   f"Game starting in {half_wait} seconds. Type \"play\" to join!\n\n")
-        await asyncio.sleep(half_wait)
-        end = time.perf_counter()
-        self._logger.info(f"Waited {end - start:.4f} seconds. ")
-        # if nobody played, cleanup and exit
-        if self._player_count < 1:
-            await self._trivia_bot.say(self._guild_id, "Nobody wanted to play... sad.")
-            await self._set_status(GameStatus.ENDING)
-            return
-        start_msg = f"\n**Game: Free for all, difficulty: {self._questions.get_difficulty()}, category: {self._questions.get_category()},.\n**"
-        start_msg += f"If you wish to skip a question answer \"skip!\". "
-        start_msg += f"To skip {SKIP_THRESHOLD:.0%} of players or more must vote to skip."
-        start_msg += f" Otherwise a skip vote counts as an incorrect answer.\n"
-        start_msg += "Game starting momentarily.\nPlayers:"
-        for player in self._players.values():
-            start_msg += f"\n\t- {player.name}"
-        start_msg += "\n\n"
-        await self._trivia_bot.say(self.get_guild_id(), start_msg, "prepare.wav")
-        await asyncio.sleep(5)
-        await self._set_status(GameStatus.ASKING)
-
     async def _ask_next_question(self):
         self._logger.info("Asking Question")
         question: MCQuestion = next(self._questions, None)
@@ -93,15 +56,6 @@ class FFAMultiChoice(FFAGame):
         await self._trivia_bot.say(self._guild_id, q_str, view=q_view)
         await self._trivia_bot.say(self._guild_id, f"\n{ANSWER_TIME} seconds to answer.\n\n", "question_ready.wav")
         await self._set_status(GameStatus.WAIT_ANSWERS)
-
-    async def _wait_answers(self):
-        await asyncio.sleep(ANSWER_TIME - 5)
-        start = time.perf_counter()
-        await self._trivia_bot.say(self._guild_id, "5 seconds left!", "countdown5.wav")
-        end = time.perf_counter()
-        # Pad out the full 5 seconds
-        await asyncio.sleep(5 - (end-start))
-        await self._set_status(GameStatus.QUESTION_RESULTS)
 
     def _clear_last_question(self):
         self._current_question = None
@@ -127,7 +81,7 @@ class FFAMultiChoice(FFAGame):
                 else:
                     player.perfect = False
                     player.streak = 0
-                scores_msg += f"\n\t{player.name}: {player.score}"
+                scores_msg += f"\n\t- {player.name}: {player.score}"
                 self._logger.info(f"{player=}")
             question_sum_msg = correct_msg + "\n" + scores_msg + "\n\n"
             await self._trivia_bot.say(self._guild_id, question_sum_msg, None)
@@ -214,7 +168,7 @@ class FFAMultiChoice(FFAGame):
                 return
         try:
             if self._status == GameStatus.GETTING_PLAYERS:
-                task = asyncio.create_task(self._wait_players())
+                task = asyncio.create_task(self._wait_players("Multiple Choice FFA"))
             elif self._status == GameStatus.ASKING:
                 task = asyncio.create_task(self._ask_next_question())
             elif self._status == GameStatus.WAIT_ANSWERS:

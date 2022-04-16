@@ -1,0 +1,163 @@
+from FFAGame import GameStatus, ANSWER_TIME
+from FFAMultiChoice import FFAMultiChoice, McQuestionView
+import nextcord
+import time
+import random
+from QuestionSet import QuestionSet, MCQuestion
+from Player import Player
+import asyncio
+
+
+class FFALives(FFAMultiChoice):
+
+    _current_question = QuestionSet
+    _question_number: int
+
+    def __init__(self, q_set_kwargs: dict[str,str|int], g_id: int, bot, logger):
+        print("Called FFALives init")
+        # Always grab 50 q's as
+        q_set_kwargs["num"] = 50
+        super().__init__(q_set_kwargs, g_id, bot, logger)
+        self._question_number = 1
+        self._sound_files["prepare"] = "lives/start_match_with_klaxon.wav"
+        self._sound_files["countdown"] = "lives/countdown_5_beeps.wav"
+        random.seed(time.time())
+
+    def add_player(self, player_user: nextcord.user) -> bool:
+        added = super().add_player(player_user)
+        # Players in the game mode start with 10 lives
+        if added:
+            self._players[player_user.id].score = 10
+        return added
+
+    async def _ask_next_question(self):
+        self._logger.info("Asking Question")
+        question: MCQuestion = next(self._questions, None)
+        # If none, then we're outta questions end the game
+        if question is None:
+            self._logger.info("All outta questions")
+            # get more questions
+            await self._questions.initialize()
+            question: MCQuestion = next(self._questions, None)
+        self._current_question = question
+        q_view = McQuestionView(self)
+        self._current_view = q_view
+        q_str = f"**Question No {self._question_number}:**\n"
+        self._question_number += 1
+        q_str += f"{question.question}"
+        for char, answer in zip("abcd", question.choices):
+            q_str += f"\n\t{char}. {answer}"
+        q_str += "\n\n"
+        await self._trivia_bot.say(self._guild_id, q_str, view=q_view)
+        await self._trivia_bot.say(self._guild_id, f"\n{ANSWER_TIME} seconds to answer.\n\n", "question_ready.wav")
+        await self._set_status(GameStatus.WAIT_ANSWERS)
+
+    async def _end_question(self):
+        if self._skip_question():
+            self._skipped_questions += 1
+            await self._trivia_bot.say(self._guild_id, "**Question skipped!**\n\n")
+            # Loop over players, update their scores, streak, and perfect status
+        else:
+            incorrect = []
+            answer = f"{'abcd'[self._current_question.answer_index]}. {self._current_question.answer}"
+            correct_msg = f"Correct Answer: {answer}\nCorrect Players:"
+            scores_msg = "Hit Points Remaining:"
+            for player in self._players.values():
+                if player.answer != "skip!" and self._check_answer(player.answer):
+                    player.streak += 1
+                    correct_msg += f"\n\t- {player.name}"
+                else:
+                    player.perfect = False
+                    player.streak = 0
+                    player.score -= 1
+                    incorrect.append(player)
+                scores_msg += f"\n\t- {player.name}: {player.score}"
+                self._logger.info(f"{player=}")
+            question_sum_msg = correct_msg + "\n" + scores_msg + "\n\n"
+            await self._trivia_bot.say(self._guild_id, question_sum_msg, None)
+            await self._question_report(incorrect)
+        self._current_view.stop()
+        self._reset_answers()
+        # Game flow should allow a brief pause here
+        await asyncio.sleep(5)
+        await self._set_status(GameStatus.ASKING)
+
+    async def _question_report(self, incorrect_players: list[Player]):
+        # Method to report the scores after the question, and announce streak callouts
+        callouts = set()
+        announcements = []
+        for player in incorrect_players:
+            # Streak == 0 --> player just answered incorrectly
+            print(player)
+            life_pct = 10 * player.score
+            status_msg = f"{player.name} health: {life_pct / 100:.0%}\n\n"
+            if life_pct in {70, 50, 30, 10}:
+                status_wav = None
+                version = random.randint(1, 3)
+                status_wav = f"lives/{life_pct}pct_life_{version}.wav"
+                # Let's not spam the voice channel, check if the announcement is already going to play
+                if status_wav is not None and life_pct not in callouts:
+                    callouts.add(life_pct)
+                    announcements.append((status_msg, status_wav))
+                else:
+                    announcements.append((status_msg, None))
+        await self._trivia_bot.speak(self._guild_id, announcements)
+        await self._eliminate_players()
+
+    async def _end_game(self):
+        # TODO: Implement complete override to _end_game where a random victory sound is played
+        self._logger.info("ending game")
+        players: list[Player] = list(self._players.values())
+        players.sort(reverse=True, key=lambda p: p.score)
+        winner = players[0]
+        game_report = "Final scores:\n"
+        for i, player in enumerate(players):
+            game_report += f"{i + 1}. {player}: {player.score}\n"
+        # check for ties
+        if len(players) > 1 and players[1].score == winner.score:
+            winners: list[Player] = list(map(lambda p: p.score == winner.score, players))
+            tie_result = f"@everyone There was a {len(winners)} way tie! Winners:\n"
+            for winner in winners:
+                tie_result += f"\n\t- {winner.name}"
+                await self._trivia_bot.say(self._guild_id, tie_result)
+        else:
+            num = random.randint(1, 3)
+            await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> is the winner with {winner.score} points!",
+                                       f"lives/victory{num}.wav")
+            # Quite an achievement
+            self._logger.info("checking if player is perfect")
+            if winner.is_perfect():
+                await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
+        await self.end()
+
+    async def _eliminate_players(self):
+        players_to_cull = [player.id for player in self._players.values() if player.score < 1]
+        if not players_to_cull:
+            return
+        announcements = None
+        # In case of a tie where everyone is out in one go, give everyone one life
+        if len(players_to_cull) == len(self._players):
+            for player_id in players_to_cull:
+                self._players[player_id].score = 1
+            announcement = ("It's a tie! All players lives set to 1.", "lives/tie.wav")
+        else:
+            announcement_msg = "Players eliminated:"
+            for player_id in players_to_cull:
+                player_name = self._players[player_id].name
+                announcement_msg += f"\n\t- {player_name}"
+                del self._players[player_id]
+            announcement = (announcement_msg, f"lives/lose{random.randint(1, 4)}.wav")
+        self._logger.info(f"Players left: {[player.name for player in self._players.values()]}")
+        await self._trivia_bot.say(self._guild_id, announcement[0], announcement[1])
+        if len(self._players) == 1:
+            await self._set_status(GameStatus.ENDING)
+        else:
+            await self._set_status(GameStatus.ASKING)
+
+
+
+
+    # async def _set_status(self, status: GameStatus, **kwargs):
+    #     if
+
+
