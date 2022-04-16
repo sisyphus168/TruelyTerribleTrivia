@@ -31,6 +31,7 @@ class GameStatus(enum.Enum):
 
 class FFAGame(ABC):
     _status: GameStatus
+    _sound_files: dict[str, str]
     _players: dict[int, Player]
     _player_count: int
     _questions: QuestionSet
@@ -53,6 +54,10 @@ class FFAGame(ABC):
         self._skipped_questions = 0
         self._task_stack = deque(maxlen=250)
         self._logger = logger
+        self._sound_files = {
+            "prepare": "prepare.wav",
+            "countdown": "countdown5.wav"
+        }
 
     @abstractmethod
     def receive_answer(self, message: nextcord.Message):
@@ -116,7 +121,7 @@ class FFAGame(ABC):
     async def _wait_answers(self):
         await asyncio.sleep(ANSWER_TIME - 5)
         start = time.perf_counter()
-        await self._trivia_bot.say(self._guild_id, "5 seconds left!", "countdown5.wav")
+        await self._trivia_bot.say(self._guild_id, "5 seconds left!", self._sound_files["countdown"])
         end = time.perf_counter()
         # Pad out the full 5 seconds
         await asyncio.sleep(5 - (end-start))
@@ -147,6 +152,6 @@ class FFAGame(ABC):
         for player in self._players.values():
             start_msg += f"\n\t- {player.name}"
         start_msg += "\n\n"
-        await self._trivia_bot.say(self.get_guild_id(), start_msg, "prepare.wav")
+        await self._trivia_bot.say(self.get_guild_id(), start_msg, self._sound_files["prepare"])
         await asyncio.sleep(5)
         await self._set_status(GameStatus.ASKING)

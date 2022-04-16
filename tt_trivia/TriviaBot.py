@@ -140,7 +140,7 @@ class TriviaBot(nextcord.Client):
             while voice_client.is_playing():
                 await asyncio.sleep(1)
             source_path = os.path.join(self._sound_path, sound_file)
-            audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path))
+            audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path), volume=0.75)
             voice_client.play(audio_source)
 
     async def _setup_game(self, msg: str, guild_id: int):

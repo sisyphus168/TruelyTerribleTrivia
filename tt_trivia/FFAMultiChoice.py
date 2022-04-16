@@ -8,9 +8,10 @@ from FFAGame import GameStatus, FFAGame, SKIP_THRESHOLD, ANSWER_TIME, WAIT_PLAYE
 class FFAMultiChoice(FFAGame):
     _current_question: MCQuestion | None
 
-    def __init__(self, q_set_kwargs: dict[str,str], g_id: int, bot, logger):
+    def __init__(self, q_set_kwargs: dict[str, str], g_id: int, bot, logger):
         super().__init__(g_id, bot, logger)
         self._questions = QuestionSet(Qtype.MULTI_CHOICE, **q_set_kwargs)
+        self._sound_files["prepare"] = "prepare.wav"
 
     def receive_answer(self, message: nextcord.Message):
         ans = message.content.lower().strip()

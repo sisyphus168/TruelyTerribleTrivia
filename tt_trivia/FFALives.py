@@ -19,13 +19,15 @@ class FFALives(FFAMultiChoice):
         q_set_kwargs["num"] = 50
         super().__init__(q_set_kwargs, g_id, bot, logger)
         self._question_number = 1
+        self._sound_files["prepare"] = "lives/start_match_with_klaxon.wav"
+        self._sound_files["countdown"] = "lives/countdown_5_beeps.wav"
         random.seed(time.time())
 
     def add_player(self, player_user: nextcord.user) -> bool:
         added = super().add_player(player_user)
         # Players in the game mode start with 10 lives
         if added:
-            self._players[player_user.id].score = 3 #10
+            self._players[player_user.id].score = 10
         return added
 
     async def _ask_next_question(self):
@@ -104,7 +106,28 @@ class FFALives(FFAMultiChoice):
 
     async def _end_game(self):
         # TODO: Implement complete override to _end_game where a random victory sound is played
-        await super()._end_game()
+        self._logger.info("ending game")
+        players: list[Player] = list(self._players.values())
+        players.sort(reverse=True, key=lambda p: p.score)
+        winner = players[0]
+        game_report = "Final scores:\n"
+        for i, player in enumerate(players):
+            game_report += f"{i + 1}. {player}: {player.score}\n"
+        # check for ties
+        if len(players) > 1 and players[1].score == winner.score:
+            winners: list[Player] = list(map(lambda p: p.score == winner.score, players))
+            tie_result = f"@everyone There was a {len(winners)} way tie! Winners:\n"
+            for winner in winners:
+                tie_result += f"\n\t- {winner.name}"
+                await self._trivia_bot.say(self._guild_id, tie_result)
+        else:
+            num = random.randint(1, 3)
+            await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> is the winner with {winner.score} points!",
+                                       f"lives/victory{num}.wav")
+            # Quite an achievement
+            self._logger.info("checking if player is perfect")
+            if winner.is_perfect():
+                await self._trivia_bot.say(self._guild_id, f"<@{winner.id}> was perfect for the game!", "flawless.wav")
         await self.end()
 
     async def _eliminate_players(self):
