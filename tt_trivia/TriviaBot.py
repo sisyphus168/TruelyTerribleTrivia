@@ -36,6 +36,7 @@ class TriviaBot(nextcord.Client):
     _games: dict[int, FFAMultiChoice]
     _voice_clients: dict[int, nextcord.VoiceClient]
     _game_code_to_q_type: dict[str, Qtype]
+    _vol_settings: dict[int:int]
 
     def __init__(self, sound_path):
         super(TriviaBot, self).__init__()
@@ -48,6 +49,7 @@ class TriviaBot(nextcord.Client):
         self._games = {}
         self._voice_clients = {}
         self._categories = {}
+        self._vol_settings = {}
         with open(f"{os.getenv('CATEGORIES')}", "r") as f:
             self._categories = set(json.load(f).keys())
 
@@ -93,8 +95,26 @@ class TriviaBot(nextcord.Client):
             elif msg == "end":
                 if self.has_game(message.guild.id):
                     await self._games[message.guild.id].end()
+            elif msg.startswith("vol"):
+                await self._set_volume(msg, message.guild.id)
         elif self.has_game(message.guild.id):
             await self._pass_message_to_game(message, message.guild.id)
+
+    async def _set_volume(self, msg: str, guild_id: int) -> None:
+        # users can query what the volume is set to
+        if re.match(pattern="vol(\s)+\?", string=msg) is not None:
+            curr_vol = self._vol_settings[guild_id]
+            await self.say(guild_id, f"Current bot volume: {curr_vol}%", None, None)
+            return
+        if re.match(pattern="vol(\s)+(\d){1,3}", string=msg) is None:
+            await self.say(guild_id, "Invalid volume command", None, None)
+            return
+        vol_setting = int(msg.removeprefix("vol").strip())
+        if vol_setting > 100 or vol_setting < 0:
+            await self.say(guild_id, f"Invalid volume value: {vol_setting}", None, None)
+            return
+        self._vol_settings[guild_id] = vol_setting
+        await self.say(guild_id, f"bot volume set to {vol_setting}%", None, None)
 
     async def _pass_message_to_game(self, message: nextcord.Message, g_id: int):
         game: FFAMultiChoice = self._games[g_id]
@@ -110,6 +130,8 @@ class TriviaBot(nextcord.Client):
         logger.info(f"{self.user} logged on.")
         for guild in self.guilds:
             logger.info(f"Connected to guild {guild.name} with id {guild.id}")
+            # set volumes to 50% by default
+            self._vol_settings[guild.id] = 50
         await self._init_voice_clients()
 
     async def speak(self, guild_id: int, announcements: list[tuple[str, str | None]]):
@@ -137,10 +159,11 @@ class TriviaBot(nextcord.Client):
         if text_channel is not None:
             await text_channel.send(msg, view=view)
         if voice_client is not None and sound_file is not None:
+            vol = self._vol_settings[guild_id]
             while voice_client.is_playing():
                 await asyncio.sleep(1)
             source_path = os.path.join(self._sound_path, sound_file)
-            audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path), volume=0.75)
+            audio_source = nextcord.PCMVolumeTransformer(nextcord.FFmpegPCMAudio(source_path), volume=(vol/100))
             voice_client.play(audio_source)
 
     async def _setup_game(self, msg: str, guild_id: int):
